@@ -11,6 +11,7 @@ namespace mlibc {
                           TcbSet,
                           AnonAllocate,
                           AnonFree,
+                          VmProtect,
                           Seek,
                           Exit,
                           Close,
@@ -20,6 +21,7 @@ namespace mlibc {
                           Open,
                           VmMap,
                           VmUnmap,
+                          Execve,
                           ClockGet {};
 
 template <typename Tag>
