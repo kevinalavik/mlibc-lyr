@@ -56,9 +56,7 @@ int Sysdeps<Write>::operator()(int fd, void const *buf, size_t size, ssize_t *re
 }
 
 int Sysdeps<TcbSet>::operator()(void *pointer) {
-	uintptr_t thread_data = reinterpret_cast<uintptr_t>(pointer) + sizeof(Tcb);
-	asm volatile("mv tp, %0" ::"r"(thread_data));
-	return 0;
+	STUB();
 }
 
 int Sysdeps<AnonAllocate>::operator()(size_t size, void **pointer) {
