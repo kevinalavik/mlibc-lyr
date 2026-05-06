@@ -6,6 +6,12 @@
 #include <bits/syscall.h>
 #include <mlibc/all-sysdeps.hpp>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#include <termios.h>
+#include <unistd.h>
+
 
 enum {
 	SYS_READ = 0,
@@ -30,9 +36,59 @@ enum {
 	SYS_MMAP,
 	SYS_MUNMAP,
 	SYS_MPROTECT,
+	SYS_IOCTL,
+	SYS_SOCKET,
+	SYS_BIND,
+	SYS_CONNECT,
+	SYS_LISTEN,
+	SYS_ACCEPT,
+	SYS_GETSOCKNAME,
+	SYS_GETPEERNAME,
+	SYS_SEND,
+	SYS_RECV,
+	SYS_SENDTO,
+	SYS_RECVFROM,
+	SYS_SHUTDOWN,
+	SYS_SETSOCKOPT,
+	SYS_GETSOCKOPT,
 };
 
 static constexpr long ARCH_SET_FS = 0x1002;
+
+#ifndef TCGETS
+#define TCGETS 0x5401
+#endif
+#ifndef TCSETS
+#define TCSETS 0x5402
+#endif
+#ifndef TCSETSW
+#define TCSETSW 0x5403
+#endif
+#ifndef TCSETSF
+#define TCSETSF 0x5404
+#endif
+#ifndef TCSBRK
+#define TCSBRK 0x5409
+#endif
+#ifndef TCXONC
+#define TCXONC 0x540A
+#endif
+#ifndef TCFLSH
+#define TCFLSH 0x540B
+#endif
+#ifndef TIOCGWINSZ
+#define TIOCGWINSZ 0x5413
+#endif
+#ifndef TIOCSWINSZ
+#define TIOCSWINSZ 0x5414
+#endif
+
+#ifndef AT_FDCWD
+#define AT_FDCWD -100
+#endif
+#ifndef AT_REMOVEDIR
+#define AT_REMOVEDIR 0x200
+#endif
 
 namespace {
 
@@ -83,8 +139,12 @@ void Sysdeps<LibcLog>::operator()(const char *msg) {
 	sysdep<Write>(1, msg, strlen(msg), &unused);
 }
 
-int Sysdeps<Isatty>::operator()(int) {
-	return ENOSYS;
+int Sysdeps<Isatty>::operator()(int fd) {
+	struct termios attr;
+	auto sc_ret = syscall(SYS_IOCTL, fd, TCGETS, &attr);
+	if (int e = sc_error(sc_ret); e)
+		return e;
+	return 0;
 }
 
 int Sysdeps<Write>::operator()(int fd, void const *buf, size_t size, ssize_t *ret) {
@@ -183,11 +243,305 @@ int Sysdeps<Execve>::operator()(const char *path, char *const argv[],
 	auto sc = syscall(SYS_EXECVE, path, argv, envp);
 	if (int e = sc_error(sc); e)
 		return e;
-	__ensure(!"sys_execve() returned unexpectedly");
+	return 0;
 }
 
 int Sysdeps<ClockGet>::operator()(int, time_t *, long *) {
 	return ENOSYS;
+}
+
+int Sysdeps<OpenDir>::operator()(const char *path, int *handle) {
+	return sysdep<Open>(path, O_RDONLY | O_DIRECTORY, 0, handle);
+}
+
+int Sysdeps<ReadEntries>::operator()(int handle, void *buffer,
+		size_t max_size, size_t *bytes_read) {
+	auto sc = syscall(SYS_GETDENTS, handle, buffer, max_size);
+	if (int e = sc_error(sc); e)
+		return e;
+	*bytes_read = sc;
+	return 0;
+}
+
+int Sysdeps<Stat>::operator()(fsfd_target fsfdt, int fd,
+		const char *path, int flags, struct stat *statbuf) {
+	(void)flags;
+
+	switch (fsfdt) {
+	case fsfd_target::path:
+		break;
+	case fsfd_target::fd_path:
+		if (fd != AT_FDCWD)
+			return ENOSYS;
+		break;
+	case fsfd_target::fd:
+	default:
+		return ENOSYS;
+	}
+
+	auto sc = syscall(SYS_STAT, path, statbuf);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Access>::operator()(const char *path, int mode) {
+	auto sc = syscall(SYS_ACCESS, path, mode);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Faccessat>::operator()(int dirfd, const char *pathname,
+		int mode, int flags) {
+	if (dirfd != AT_FDCWD || flags)
+		return ENOSYS;
+	return sysdep<Access>(pathname, mode);
+}
+
+int Sysdeps<Chmod>::operator()(const char *pathname, mode_t mode) {
+	auto sc = syscall(SYS_CHMOD, pathname, mode);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Fchmodat>::operator()(int fd, const char *pathname,
+		mode_t mode, int flags) {
+	if (fd != AT_FDCWD || flags)
+		return ENOSYS;
+	return sysdep<Chmod>(pathname, mode);
+}
+
+int Sysdeps<Fchmod>::operator()(int fd, mode_t mode) {
+	(void)fd;
+	(void)mode;
+	return ENOSYS;
+}
+
+int Sysdeps<Fchownat>::operator()(int dirfd, const char *pathname,
+		uid_t owner, gid_t group, int flags) {
+	if (dirfd != AT_FDCWD || flags)
+		return ENOSYS;
+
+	auto sc = syscall(SYS_CHOWN, pathname, owner, group);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Mkdir>::operator()(const char *path, mode_t mode) {
+	auto sc = syscall(SYS_MKDIR, path, mode);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Mkdirat>::operator()(int dirfd, const char *path, mode_t mode) {
+	if (dirfd != AT_FDCWD)
+		return ENOSYS;
+	return sysdep<Mkdir>(path, mode);
+}
+
+int Sysdeps<Rmdir>::operator()(const char *path) {
+	auto sc = syscall(SYS_RMDIR, path);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Unlinkat>::operator()(int fd, const char *path, int flags) {
+	if (fd != AT_FDCWD)
+		return ENOSYS;
+
+	if (flags & AT_REMOVEDIR)
+		return sysdep<Rmdir>(path);
+
+	if (flags)
+		return ENOSYS;
+
+	auto sc = syscall(SYS_UNLINK, path);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Ioctl>::operator()(int fd, unsigned long request,
+		void *arg, int *result) {
+	auto sc = syscall(SYS_IOCTL, fd, request, arg);
+	if (int e = sc_error(sc); e)
+		return e;
+	*result = sc;
+	return 0;
+}
+
+int Sysdeps<Tcgetattr>::operator()(int fd, struct termios *attr) {
+	int result;
+	return sysdep<Ioctl>(fd, TCGETS, attr, &result);
+}
+
+int Sysdeps<Tcsetattr>::operator()(int fd, int act,
+		const struct termios *attr) {
+	unsigned long req;
+
+	switch (act) {
+	case TCSANOW:
+		req = TCSETS;
+		break;
+	case TCSADRAIN:
+		req = TCSETSW;
+		break;
+	case TCSAFLUSH:
+		req = TCSETSF;
+		break;
+	default:
+		return EINVAL;
+	}
+
+	int result;
+	return sysdep<Ioctl>(fd, req, const_cast<struct termios *>(attr), &result);
+}
+
+int Sysdeps<Chroot>::operator()(const char *path) {
+	auto sc = syscall(SYS_CHROOT, path);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<MsgSend>::operator()(int fd, const struct msghdr *hdr,
+		int flags, ssize_t *length) {
+	if (!hdr || hdr->msg_iovlen != 1)
+		return ENOSYS;
+
+	const auto &iov = hdr->msg_iov[0];
+
+	long sc;
+	if (hdr->msg_name) {
+		sc = syscall(SYS_SENDTO, fd, iov.iov_base, iov.iov_len, flags,
+				hdr->msg_name, hdr->msg_namelen);
+	} else {
+		sc = syscall(SYS_SEND, fd, iov.iov_base, iov.iov_len, flags);
+	}
+
+	if (int e = sc_error(sc); e)
+		return e;
+
+	*length = sc;
+	return 0;
+}
+
+int Sysdeps<MsgRecv>::operator()(int fd, struct msghdr *hdr,
+		int flags, ssize_t *length) {
+	if (!hdr || hdr->msg_iovlen != 1)
+		return ENOSYS;
+
+	auto &iov = hdr->msg_iov[0];
+
+	long sc;
+	if (hdr->msg_name) {
+		sc = syscall(SYS_RECVFROM, fd, iov.iov_base, iov.iov_len, flags,
+				hdr->msg_name, &hdr->msg_namelen);
+	} else {
+		sc = syscall(SYS_RECV, fd, iov.iov_base, iov.iov_len, flags);
+	}
+
+	if (int e = sc_error(sc); e)
+		return e;
+
+	*length = sc;
+	return 0;
+}
+
+int Sysdeps<Socket>::operator()(int family, int type, int protocol, int *fd) {
+	auto sc = syscall(SYS_SOCKET, family, type, protocol);
+	if (int e = sc_error(sc); e)
+		return e;
+	*fd = sc;
+	return 0;
+}
+
+int Sysdeps<Bind>::operator()(int fd, const struct sockaddr *addr_ptr,
+		socklen_t addr_length) {
+	auto sc = syscall(SYS_BIND, fd, addr_ptr, addr_length);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Connect>::operator()(int fd, const struct sockaddr *addr_ptr,
+		socklen_t addr_length) {
+	auto sc = syscall(SYS_CONNECT, fd, addr_ptr, addr_length);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Listen>::operator()(int fd, int backlog) {
+	auto sc = syscall(SYS_LISTEN, fd, backlog);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Accept>::operator()(int fd, int *newfd,
+		struct sockaddr *addr_ptr, socklen_t *addr_length, int flags) {
+	if (flags)
+		return ENOSYS;
+
+	auto sc = syscall(SYS_ACCEPT, fd, addr_ptr, addr_length);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	*newfd = sc;
+	return 0;
+}
+
+int Sysdeps<Sockname>::operator()(int fd, struct sockaddr *addr_ptr,
+		socklen_t max_addr_length, socklen_t *actual_length) {
+	socklen_t length = max_addr_length;
+
+	auto sc = syscall(SYS_GETSOCKNAME, fd, addr_ptr, &length);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	*actual_length = length;
+	return 0;
+}
+
+int Sysdeps<Peername>::operator()(int fd, struct sockaddr *addr_ptr,
+		socklen_t max_addr_length, socklen_t *actual_length) {
+	socklen_t length = max_addr_length;
+
+	auto sc = syscall(SYS_GETPEERNAME, fd, addr_ptr, &length);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	*actual_length = length;
+	return 0;
+}
+
+int Sysdeps<Shutdown>::operator()(int fd, int how) {
+	auto sc = syscall(SYS_SHUTDOWN, fd, how);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<SetSockopt>::operator()(int fd, int layer, int number,
+		const void *buffer, socklen_t size) {
+	auto sc = syscall(SYS_SETSOCKOPT, fd, layer, number, buffer, size);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<GetSockopt>::operator()(int fd, int layer, int number,
+		void *buffer, socklen_t *size) {
+	auto sc = syscall(SYS_GETSOCKOPT, fd, layer, number, buffer, size);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
 }
 
 } // namespace mlibc
