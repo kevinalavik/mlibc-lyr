@@ -6,52 +6,11 @@
 #include <bits/syscall.h>
 #include <mlibc/all-sysdeps.hpp>
 #include <string.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/uio.h>
 #include <termios.h>
 #include <unistd.h>
-
-
-enum {
-	SYS_READ = 0,
-	SYS_WRITE,
-	SYS_OPEN,
-	SYS_CLOSE,
-	SYS_STAT,
-	SYS_LSEEK,
-	SYS_ACCESS,
-	SYS_GETDENTS,
-	SYS_EXIT,
-	SYS_CHMOD,
-	SYS_CHOWN,
-	SYS_MKDIR,
-	SYS_RMDIR,
-	SYS_UNLINK,
-	SYS_CHROOT,
-	SYS_MOUNT,
-	SYS_CHANGE_ROOT,
-	SYS_EXECVE,
-	SYS_ARCH_PRCTL,
-	SYS_MMAP,
-	SYS_MUNMAP,
-	SYS_MPROTECT,
-	SYS_IOCTL,
-	SYS_SOCKET,
-	SYS_BIND,
-	SYS_CONNECT,
-	SYS_LISTEN,
-	SYS_ACCEPT,
-	SYS_GETSOCKNAME,
-	SYS_GETPEERNAME,
-	SYS_SEND,
-	SYS_RECV,
-	SYS_SENDTO,
-	SYS_RECVFROM,
-	SYS_SHUTDOWN,
-	SYS_SETSOCKOPT,
-	SYS_GETSOCKOPT,
-};
 
 static constexpr long ARCH_SET_FS = 0x1002;
 
@@ -92,22 +51,20 @@ static constexpr long ARCH_SET_FS = 0x1002;
 
 namespace {
 
-int sc_error(long ret) {
-	return ret < 0 ? static_cast<int>(-ret) : 0;
-}
+int sc_error(long ret) { return ret < 0 ? static_cast<int>(-ret) : 0; }
 
 uint32_t open_flags_to_lyr(int flags) {
 	uint32_t out = 0;
 
 	switch (flags & O_ACCMODE) {
-	case O_WRONLY:
-		out |= 0x0001u;
-		break;
-	case O_RDWR:
-		out |= 0x0002u;
-		break;
-	default:
-		break;
+		case O_WRONLY:
+			out |= 0x0001u;
+			break;
+		case O_RDWR:
+			out |= 0x0002u;
+			break;
+		default:
+			break;
 	}
 
 	if (flags & O_CREAT)
@@ -124,7 +81,7 @@ uint32_t open_flags_to_lyr(int flags) {
 	return out;
 }
 
-}
+} // namespace
 
 namespace mlibc {
 
@@ -163,8 +120,9 @@ int Sysdeps<TcbSet>::operator()(void *pointer) {
 }
 
 int Sysdeps<AnonAllocate>::operator()(size_t size, void **pointer) {
-	return sysdep<VmMap>(nullptr, size, PROT_READ | PROT_WRITE,
-			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0, pointer);
+	return sysdep<VmMap>(
+	    nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0, pointer
+	);
 }
 
 int Sysdeps<AnonFree>::operator()(void *pointer, unsigned long size) {
@@ -198,13 +156,9 @@ int Sysdeps<Close>::operator()(int fd) {
 	return 0;
 }
 
-int Sysdeps<FutexWake>::operator()(int *, bool) {
-	return ENOSYS;
-}
+int Sysdeps<FutexWake>::operator()(int *, bool) { return ENOSYS; }
 
-int Sysdeps<FutexWait>::operator()(int *, int, timespec const *) {
-	return ENOSYS;
-}
+int Sysdeps<FutexWait>::operator()(int *, int, timespec const *) { return ENOSYS; }
 
 int Sysdeps<Read>::operator()(int fd, void *buf, unsigned long size, long *bytes_read) {
 	auto sc = syscall(SYS_READ, fd, buf, size);
@@ -222,8 +176,9 @@ int Sysdeps<Open>::operator()(const char *path, int flags, unsigned int mode, in
 	return 0;
 }
 
-int Sysdeps<VmMap>::operator()(void *hint, size_t size, int prot, int flags,
-		int fd, off_t offset, void **window) {
+int Sysdeps<VmMap>::operator()(
+    void *hint, size_t size, int prot, int flags, int fd, off_t offset, void **window
+) {
 	auto sc = __do_syscall6(SYS_MMAP, (long)hint, size, prot, flags, fd, offset);
 	if (int e = sc_error(sc); e)
 		return e;
@@ -238,24 +193,27 @@ int Sysdeps<VmUnmap>::operator()(void *pointer, size_t size) {
 	return 0;
 }
 
-int Sysdeps<Execve>::operator()(const char *path, char *const argv[],
-		char *const envp[]) {
+int Sysdeps<Execve>::operator()(const char *path, char *const argv[], char *const envp[]) {
 	auto sc = syscall(SYS_EXECVE, path, argv, envp);
 	if (int e = sc_error(sc); e)
 		return e;
 	return 0;
 }
 
-int Sysdeps<ClockGet>::operator()(int, time_t *, long *) {
-	return ENOSYS;
+int Sysdeps<ClockGet>::operator()(int clock, time_t *secs, long *nanos) {
+	auto sc_ret = syscall(SYS_CLOCK_GET, clock, secs, nanos);
+	if (int e = sc_error(sc_ret); e)
+		return e;
+	return 0;
 }
 
 int Sysdeps<OpenDir>::operator()(const char *path, int *handle) {
 	return sysdep<Open>(path, O_RDONLY | O_DIRECTORY, 0, handle);
 }
 
-int Sysdeps<ReadEntries>::operator()(int handle, void *buffer,
-		size_t max_size, size_t *bytes_read) {
+int Sysdeps<ReadEntries>::operator()(
+    int handle, void *buffer, size_t max_size, size_t *bytes_read
+) {
 	auto sc = syscall(SYS_GETDENTS, handle, buffer, max_size);
 	if (int e = sc_error(sc); e)
 		return e;
@@ -263,20 +221,21 @@ int Sysdeps<ReadEntries>::operator()(int handle, void *buffer,
 	return 0;
 }
 
-int Sysdeps<Stat>::operator()(fsfd_target fsfdt, int fd,
-		const char *path, int flags, struct stat *statbuf) {
+int Sysdeps<Stat>::operator()(
+    fsfd_target fsfdt, int fd, const char *path, int flags, struct stat *statbuf
+) {
 	(void)flags;
 
 	switch (fsfdt) {
-	case fsfd_target::path:
-		break;
-	case fsfd_target::fd_path:
-		if (fd != AT_FDCWD)
+		case fsfd_target::path:
+			break;
+		case fsfd_target::fd_path:
+			if (fd != AT_FDCWD)
+				return ENOSYS;
+			break;
+		case fsfd_target::fd:
+		default:
 			return ENOSYS;
-		break;
-	case fsfd_target::fd:
-	default:
-		return ENOSYS;
 	}
 
 	auto sc = syscall(SYS_STAT, path, statbuf);
@@ -292,8 +251,7 @@ int Sysdeps<Access>::operator()(const char *path, int mode) {
 	return 0;
 }
 
-int Sysdeps<Faccessat>::operator()(int dirfd, const char *pathname,
-		int mode, int flags) {
+int Sysdeps<Faccessat>::operator()(int dirfd, const char *pathname, int mode, int flags) {
 	if (dirfd != AT_FDCWD || flags)
 		return ENOSYS;
 	return sysdep<Access>(pathname, mode);
@@ -306,8 +264,7 @@ int Sysdeps<Chmod>::operator()(const char *pathname, mode_t mode) {
 	return 0;
 }
 
-int Sysdeps<Fchmodat>::operator()(int fd, const char *pathname,
-		mode_t mode, int flags) {
+int Sysdeps<Fchmodat>::operator()(int fd, const char *pathname, mode_t mode, int flags) {
 	if (fd != AT_FDCWD || flags)
 		return ENOSYS;
 	return sysdep<Chmod>(pathname, mode);
@@ -319,8 +276,9 @@ int Sysdeps<Fchmod>::operator()(int fd, mode_t mode) {
 	return ENOSYS;
 }
 
-int Sysdeps<Fchownat>::operator()(int dirfd, const char *pathname,
-		uid_t owner, gid_t group, int flags) {
+int Sysdeps<Fchownat>::operator()(
+    int dirfd, const char *pathname, uid_t owner, gid_t group, int flags
+) {
 	if (dirfd != AT_FDCWD || flags)
 		return ENOSYS;
 
@@ -366,8 +324,7 @@ int Sysdeps<Unlinkat>::operator()(int fd, const char *path, int flags) {
 	return 0;
 }
 
-int Sysdeps<Ioctl>::operator()(int fd, unsigned long request,
-		void *arg, int *result) {
+int Sysdeps<Ioctl>::operator()(int fd, unsigned long request, void *arg, int *result) {
 	auto sc = syscall(SYS_IOCTL, fd, request, arg);
 	if (int e = sc_error(sc); e)
 		return e;
@@ -380,22 +337,21 @@ int Sysdeps<Tcgetattr>::operator()(int fd, struct termios *attr) {
 	return sysdep<Ioctl>(fd, TCGETS, attr, &result);
 }
 
-int Sysdeps<Tcsetattr>::operator()(int fd, int act,
-		const struct termios *attr) {
+int Sysdeps<Tcsetattr>::operator()(int fd, int act, const struct termios *attr) {
 	unsigned long req;
 
 	switch (act) {
-	case TCSANOW:
-		req = TCSETS;
-		break;
-	case TCSADRAIN:
-		req = TCSETSW;
-		break;
-	case TCSAFLUSH:
-		req = TCSETSF;
-		break;
-	default:
-		return EINVAL;
+		case TCSANOW:
+			req = TCSETS;
+			break;
+		case TCSADRAIN:
+			req = TCSETSW;
+			break;
+		case TCSAFLUSH:
+			req = TCSETSF;
+			break;
+		default:
+			return EINVAL;
 	}
 
 	int result;
@@ -409,8 +365,7 @@ int Sysdeps<Chroot>::operator()(const char *path) {
 	return 0;
 }
 
-int Sysdeps<MsgSend>::operator()(int fd, const struct msghdr *hdr,
-		int flags, ssize_t *length) {
+int Sysdeps<MsgSend>::operator()(int fd, const struct msghdr *hdr, int flags, ssize_t *length) {
 	if (!hdr || hdr->msg_iovlen != 1)
 		return ENOSYS;
 
@@ -418,8 +373,9 @@ int Sysdeps<MsgSend>::operator()(int fd, const struct msghdr *hdr,
 
 	long sc;
 	if (hdr->msg_name) {
-		sc = syscall(SYS_SENDTO, fd, iov.iov_base, iov.iov_len, flags,
-				hdr->msg_name, hdr->msg_namelen);
+		sc = syscall(
+		    SYS_SENDTO, fd, iov.iov_base, iov.iov_len, flags, hdr->msg_name, hdr->msg_namelen
+		);
 	} else {
 		sc = syscall(SYS_SEND, fd, iov.iov_base, iov.iov_len, flags);
 	}
@@ -431,8 +387,7 @@ int Sysdeps<MsgSend>::operator()(int fd, const struct msghdr *hdr,
 	return 0;
 }
 
-int Sysdeps<MsgRecv>::operator()(int fd, struct msghdr *hdr,
-		int flags, ssize_t *length) {
+int Sysdeps<MsgRecv>::operator()(int fd, struct msghdr *hdr, int flags, ssize_t *length) {
 	if (!hdr || hdr->msg_iovlen != 1)
 		return ENOSYS;
 
@@ -440,8 +395,9 @@ int Sysdeps<MsgRecv>::operator()(int fd, struct msghdr *hdr,
 
 	long sc;
 	if (hdr->msg_name) {
-		sc = syscall(SYS_RECVFROM, fd, iov.iov_base, iov.iov_len, flags,
-				hdr->msg_name, &hdr->msg_namelen);
+		sc = syscall(
+		    SYS_RECVFROM, fd, iov.iov_base, iov.iov_len, flags, hdr->msg_name, &hdr->msg_namelen
+		);
 	} else {
 		sc = syscall(SYS_RECV, fd, iov.iov_base, iov.iov_len, flags);
 	}
@@ -461,16 +417,14 @@ int Sysdeps<Socket>::operator()(int family, int type, int protocol, int *fd) {
 	return 0;
 }
 
-int Sysdeps<Bind>::operator()(int fd, const struct sockaddr *addr_ptr,
-		socklen_t addr_length) {
+int Sysdeps<Bind>::operator()(int fd, const struct sockaddr *addr_ptr, socklen_t addr_length) {
 	auto sc = syscall(SYS_BIND, fd, addr_ptr, addr_length);
 	if (int e = sc_error(sc); e)
 		return e;
 	return 0;
 }
 
-int Sysdeps<Connect>::operator()(int fd, const struct sockaddr *addr_ptr,
-		socklen_t addr_length) {
+int Sysdeps<Connect>::operator()(int fd, const struct sockaddr *addr_ptr, socklen_t addr_length) {
 	auto sc = syscall(SYS_CONNECT, fd, addr_ptr, addr_length);
 	if (int e = sc_error(sc); e)
 		return e;
@@ -484,8 +438,9 @@ int Sysdeps<Listen>::operator()(int fd, int backlog) {
 	return 0;
 }
 
-int Sysdeps<Accept>::operator()(int fd, int *newfd,
-		struct sockaddr *addr_ptr, socklen_t *addr_length, int flags) {
+int Sysdeps<Accept>::operator()(
+    int fd, int *newfd, struct sockaddr *addr_ptr, socklen_t *addr_length, int flags
+) {
 	if (flags)
 		return ENOSYS;
 
@@ -497,8 +452,9 @@ int Sysdeps<Accept>::operator()(int fd, int *newfd,
 	return 0;
 }
 
-int Sysdeps<Sockname>::operator()(int fd, struct sockaddr *addr_ptr,
-		socklen_t max_addr_length, socklen_t *actual_length) {
+int Sysdeps<Sockname>::operator()(
+    int fd, struct sockaddr *addr_ptr, socklen_t max_addr_length, socklen_t *actual_length
+) {
 	socklen_t length = max_addr_length;
 
 	auto sc = syscall(SYS_GETSOCKNAME, fd, addr_ptr, &length);
@@ -509,8 +465,9 @@ int Sysdeps<Sockname>::operator()(int fd, struct sockaddr *addr_ptr,
 	return 0;
 }
 
-int Sysdeps<Peername>::operator()(int fd, struct sockaddr *addr_ptr,
-		socklen_t max_addr_length, socklen_t *actual_length) {
+int Sysdeps<Peername>::operator()(
+    int fd, struct sockaddr *addr_ptr, socklen_t max_addr_length, socklen_t *actual_length
+) {
 	socklen_t length = max_addr_length;
 
 	auto sc = syscall(SYS_GETPEERNAME, fd, addr_ptr, &length);
@@ -528,20 +485,46 @@ int Sysdeps<Shutdown>::operator()(int fd, int how) {
 	return 0;
 }
 
-int Sysdeps<SetSockopt>::operator()(int fd, int layer, int number,
-		const void *buffer, socklen_t size) {
+int Sysdeps<SetSockopt>::operator()(
+    int fd, int layer, int number, const void *buffer, socklen_t size
+) {
 	auto sc = syscall(SYS_SETSOCKOPT, fd, layer, number, buffer, size);
 	if (int e = sc_error(sc); e)
 		return e;
 	return 0;
 }
 
-int Sysdeps<GetSockopt>::operator()(int fd, int layer, int number,
-		void *buffer, socklen_t *size) {
+int Sysdeps<GetSockopt>::operator()(int fd, int layer, int number, void *buffer, socklen_t *size) {
 	auto sc = syscall(SYS_GETSOCKOPT, fd, layer, number, buffer, size);
 	if (int e = sc_error(sc); e)
 		return e;
 	return 0;
+}
+
+int Sysdeps<Poll>::operator()(struct pollfd *fds, nfds_t nfds, int timeout, int *num_events) {
+	auto ret = syscall(SYS_POLL, fds, nfds, timeout);
+
+	if (ret < 0)
+		return -ret;
+
+	*num_events = ret;
+	return 0;
+}
+
+int Sysdeps<Fork>::operator()(pid_t *child) {
+	auto sc_ret = syscall(SYS_FORK);
+	if (int e = sc_error(sc_ret); e)
+		return e;
+	if (child)
+		*child = static_cast<pid_t>(sc_ret);
+	return 0;
+}
+
+pid_t Sysdeps<GetPid>::operator()() {
+	auto sc_ret = syscall(SYS_GETPID);
+	if (int e = sc_error(sc_ret); e)
+		return (pid_t)-e;
+	return static_cast<pid_t>(sc_ret);
 }
 
 } // namespace mlibc

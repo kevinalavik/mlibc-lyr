@@ -67,6 +67,12 @@ if not no_headers
 		subdir: 'abi-bits',
 		follow_symlinks: true,
 	)
+
+	install_headers(
+		'include/lyr/mount.h',
+		subdir: 'lyr',
+		follow_symlinks: true,
+	)
 endif
 
 if not headers_only
@@ -116,6 +122,7 @@ if not headers_only
 		'generic/entry.cpp',
 		'generic/syscall.cpp',
 		'generic/sysdeps.cpp',
+		'lyr/mount.cpp'
 	)
 	libc_include_dirs += include_directories('include')
 endif

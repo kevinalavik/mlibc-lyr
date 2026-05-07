@@ -16,9 +16,7 @@ AccessModifierOffset: -4
 AlignAfterOpenBracket: BlockIndent
 
 # Put template<> on its own line.
-BreakTemplateDeclarations: Yes
 # Put long return types on their own line.
-BreakAfterReturnType: Automatic
 # Put binary operators at the start of the line.
 BreakBeforeBinaryOperators: NonAssignment
 

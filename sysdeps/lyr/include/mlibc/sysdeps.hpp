@@ -51,9 +51,11 @@ struct LyrSysdepsTags : LibcPanic,
                         VmMap,
                         VmUnmap,
                         Execve,
-                        ClockGet {};
+                        ClockGet,
+                        Poll,
+                        Fork,
+                        GetPid {};
 
-template <typename Tag>
-using Sysdeps = SysdepOf<LyrSysdepsTags, Tag>;
+template <typename Tag> using Sysdeps = SysdepOf<LyrSysdepsTags, Tag>;
 
 } // namespace mlibc
