@@ -1,6 +1,8 @@
 #include "mlibc/tcb.hpp"
 #include <abi-bits/errno.h>
 #include <abi-bits/fcntl.h>
+#include <abi-bits/gid_t.h>
+#include <abi-bits/uid_t.h>
 #include <abi-bits/vm-flags.h>
 #include <bits/ensure.h>
 #include <bits/syscall.h>
@@ -525,6 +527,149 @@ pid_t Sysdeps<GetPid>::operator()() {
 	if (int e = sc_error(sc_ret); e)
 		return (pid_t)-e;
 	return static_cast<pid_t>(sc_ret);
+}
+
+uid_t Sysdeps<GetUid>::operator()() {
+	auto sc_ret = syscall(SYS_GETUID);
+	if (int e = sc_error(sc_ret); e)
+		return (uid_t)-1;
+	return static_cast<uid_t>(sc_ret);
+}
+
+uid_t Sysdeps<GetEuid>::operator()() {
+	auto sc_ret = syscall(SYS_GETEUID);
+	if (int e = sc_error(sc_ret); e)
+		return (uid_t)-1;
+	return static_cast<uid_t>(sc_ret);
+}
+
+gid_t Sysdeps<GetGid>::operator()() {
+	auto sc_ret = syscall(SYS_GETGID);
+	if (int e = sc_error(sc_ret); e)
+		return (gid_t)-1;
+	return static_cast<gid_t>(sc_ret);
+}
+
+gid_t Sysdeps<GetEgid>::operator()() {
+	auto sc_ret = syscall(SYS_GETEGID);
+	if (int e = sc_error(sc_ret); e)
+		return (gid_t)-1;
+	return static_cast<gid_t>(sc_ret);
+}
+
+int Sysdeps<SetUid>::operator()(uid_t uid) {
+	auto sc = syscall(SYS_SETUID, uid);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<SetEuid>::operator()(uid_t euid) {
+	auto sc = syscall(SYS_SETEUID, euid);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<SetGid>::operator()(gid_t gid) {
+	auto sc = syscall(SYS_SETGID, gid);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<SetEgid>::operator()(gid_t egid) {
+	auto sc = syscall(SYS_SETEGID, egid);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+pid_t Sysdeps<GetTid>::operator()() {
+	auto sc_ret = syscall(SYS_GETTID);
+	if (int e = sc_error(sc_ret); e)
+		return (pid_t)-e;
+	return static_cast<pid_t>(sc_ret);
+}
+
+pid_t Sysdeps<GetPpid>::operator()() {
+	auto sc_ret = syscall(SYS_GETPPID);
+	if (int e = sc_error(sc_ret); e)
+		return (pid_t)-e;
+	return static_cast<pid_t>(sc_ret);
+}
+
+int Sysdeps<Chdir>::operator()(const char *path) {
+	auto sc = syscall(SYS_CHDIR, path);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<GetCwd>::operator()(char *buffer, size_t size) {
+	auto sc = syscall(SYS_GETCWD, buffer, size);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Pselect>::operator()(
+    int num_fds,
+    fd_set *read_set,
+    fd_set *write_set,
+    fd_set *except_set,
+    const struct timespec *timeout,
+    const sigset_t *sigmask,
+    int *num_events
+) {
+	auto sc = syscall(SYS_PSELECT, num_fds, read_set, write_set, except_set, timeout, sigmask);
+
+	if (int e = sc_error(sc); e)
+		return e;
+
+	if (num_events)
+		*num_events = static_cast<int>(sc);
+
+	return 0;
+}
+
+int Sysdeps<Fcntl>::operator()(int fd, int request, va_list args, int *result) {
+	long arg = 0;
+
+	switch (request) {
+		case F_DUPFD:
+		case F_DUPFD_CLOEXEC:
+		case F_SETFD:
+		case F_SETFL:
+			arg = va_arg(args, long);
+			break;
+		default:
+			arg = 0;
+			break;
+	}
+
+	auto sc = syscall(SYS_FCNTL, fd, request, arg);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	*result = static_cast<int>(sc);
+	return 0;
+}
+
+int Sysdeps<Waitpid>::operator()(
+    pid_t pid, int *status, int flags, struct rusage *ru, pid_t *ret_pid
+) {
+	if (ru)
+		return ENOSYS;
+
+	auto sc = syscall(SYS_WAITPID, pid, status, flags);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	if (ret_pid)
+		*ret_pid = static_cast<pid_t>(sc);
+
+	return 0;
 }
 
 } // namespace mlibc

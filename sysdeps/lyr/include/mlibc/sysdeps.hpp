@@ -54,7 +54,22 @@ struct LyrSysdepsTags : LibcPanic,
                         ClockGet,
                         Poll,
                         Fork,
-                        GetPid {};
+                        GetPid,
+                        GetUid,
+                        GetEuid,
+                        GetGid,
+                        GetEgid,
+                        SetUid,
+                        SetEuid,
+                        SetGid,
+                        SetEgid,
+                        GetTid,
+                        GetPpid,
+                        GetCwd,
+                        Chdir,
+                        Pselect,
+                        Fcntl,
+                        Waitpid {};
 
 template <typename Tag> using Sysdeps = SysdepOf<LyrSysdepsTags, Tag>;
 
