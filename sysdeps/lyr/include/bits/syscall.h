@@ -58,6 +58,9 @@ enum {
 	SYS_PSELECT,
 	SYS_FCNTL,
 	SYS_WAITPID,
+	SYS_NSLEEP,
+	SYS_UNAME,
+	SYS_KILL,
 };
 
 #ifdef __cplusplus

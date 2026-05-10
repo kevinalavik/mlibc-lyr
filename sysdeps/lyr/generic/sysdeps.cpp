@@ -672,4 +672,53 @@ int Sysdeps<Waitpid>::operator()(
 	return 0;
 }
 
+int Sysdeps<Sleep>::operator()(time_t *secs, long *nanos) {
+	if (!secs || !nanos)
+		return EINVAL;
+
+	auto sc = syscall(SYS_NSLEEP, (long)*secs, (long)*nanos);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Ttyname>::operator()(int fd, char *buffer, size_t size) {
+#define TTY_IOCTL_NAME 0x4c590001UL
+#define TTY_NAME_MAX 32
+#define TTY_PREFIX "/dev/"
+
+	const char prefix[] = TTY_PREFIX;
+	constexpr size_t prefix_len = sizeof(prefix) - 1;
+
+	if (!buffer)
+		return -EFAULT;
+
+	if (size < prefix_len + TTY_NAME_MAX + 1)
+		return -ENAMETOOLONG;
+
+	memcpy(buffer, prefix, prefix_len);
+
+	int res;
+	int e = sysdep<Ioctl>(fd, TTY_IOCTL_NAME, buffer + prefix_len, &res);
+	if (e)
+		return e;
+
+	buffer[size - 1] = '\0';
+	return 0;
+}
+
+int Sysdeps<Uname>::operator()(struct utsname *buf) {
+	auto sc = syscall(SYS_UNAME, buf);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Kill>::operator()(pid_t pid, int signal) {
+	auto sc = syscall(SYS_KILL, pid, signal);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
 } // namespace mlibc

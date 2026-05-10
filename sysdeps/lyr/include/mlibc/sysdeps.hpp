@@ -69,7 +69,11 @@ struct LyrSysdepsTags : LibcPanic,
                         Chdir,
                         Pselect,
                         Fcntl,
-                        Waitpid {};
+                        Waitpid,
+                        Sleep,
+                        Ttyname,
+                        Uname,
+                        Kill {};
 
 template <typename Tag> using Sysdeps = SysdepOf<LyrSysdepsTags, Tag>;
 

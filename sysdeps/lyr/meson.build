@@ -71,6 +71,8 @@ if not no_headers
 	install_headers(
 		'include/lyr/mount.h',
 		'include/lyr/pci.h',
+		'include/lyr/input.h',
+		'include/lyr/fb.h',
 		subdir: 'lyr',
 		follow_symlinks: true,
 	)
