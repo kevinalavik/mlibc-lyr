@@ -125,7 +125,8 @@ if not headers_only
 		'generic/entry.cpp',
 		'generic/syscall.cpp',
 		'generic/sysdeps.cpp',
-		'lyr/mount.cpp'
+		'lyr/mount.cpp',
+		'lyr/input.cpp'
 	)
 	libc_include_dirs += include_directories('include')
 endif

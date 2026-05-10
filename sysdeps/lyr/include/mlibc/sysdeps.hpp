@@ -73,7 +73,9 @@ struct LyrSysdepsTags : LibcPanic,
                         Sleep,
                         Ttyname,
                         Uname,
-                        Kill {};
+                        Kill,
+                        Sigprocmask,
+                        Sigaction {};
 
 template <typename Tag> using Sysdeps = SysdepOf<LyrSysdepsTags, Tag>;
 

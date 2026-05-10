@@ -102,6 +102,15 @@ int lyr_kbd_read_many(lyr_kbd_t *kbd, lyr_key_event_t *buf, size_t *count) {
 	return 0;
 }
 
+int lyr_kbd_flush(lyr_kbd_t *kbd) {
+	if (!kbd || kbd->fd < 0) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	return ioctl(kbd->fd, LYR_KBDIOCFLUSH, 0);
+}
+
 int lyr_kbd_poll(lyr_kbd_t *kbd, int timeout_ms) {
 	struct pollfd pfd;
 	int r;

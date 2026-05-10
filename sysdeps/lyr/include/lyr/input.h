@@ -136,6 +136,7 @@ typedef struct lyr_key_event {
 
 #define LYR_KBDIOCSMAP 0x4b01UL
 #define LYR_KBDIOCGMAP 0x4b02UL
+#define LYR_KBDIOCFLUSH 0x4b03UL
 #define LYR_KBD_MAP_PATH_MAX 256
 
 typedef struct lyr_kbd {
@@ -149,6 +150,7 @@ int lyr_kbd_read(lyr_kbd_t *kbd, lyr_key_event_t *ev);
 int lyr_kbd_read_many(lyr_kbd_t *kbd, lyr_key_event_t *buf, size_t *count);
 
 int lyr_kbd_poll(lyr_kbd_t *kbd, int timeout_ms);
+int lyr_kbd_flush(lyr_kbd_t *kbd);
 
 int lyr_kbd_set_layout(lyr_kbd_t *kbd, const char *path);
 int lyr_kbd_get_layout(lyr_kbd_t *kbd, char *buf);

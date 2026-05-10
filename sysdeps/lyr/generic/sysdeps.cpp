@@ -7,6 +7,8 @@
 #include <bits/ensure.h>
 #include <bits/syscall.h>
 #include <mlibc/all-sysdeps.hpp>
+#include <signal.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -54,6 +56,49 @@ static constexpr long ARCH_SET_FS = 0x1002;
 namespace {
 
 int sc_error(long ret) { return ret < 0 ? static_cast<int>(-ret) : 0; }
+
+struct lyr_sigaction {
+	uint64_t handler;
+	uint64_t flags;
+	uint64_t restorer;
+	uint64_t mask;
+};
+
+static uint64_t sigset_to_u64(const sigset_t *set) {
+	if (!set)
+		return 0;
+
+	uint64_t out = 0;
+	const unsigned char *p = reinterpret_cast<const unsigned char *>(set);
+
+	size_t n = sizeof(sigset_t) < sizeof(out) ? sizeof(sigset_t) : sizeof(out);
+	for (size_t i = 0; i < n; i++)
+		out |= static_cast<uint64_t>(p[i]) << (i * 8);
+
+	return out;
+}
+
+static void u64_to_sigset(uint64_t value, sigset_t *set) {
+	if (!set)
+		return;
+
+	memset(set, 0, sizeof(*set));
+
+	unsigned char *p = reinterpret_cast<unsigned char *>(set);
+	size_t n = sizeof(sigset_t) < sizeof(value) ? sizeof(sigset_t) : sizeof(value);
+
+	for (size_t i = 0; i < n; i++)
+		p[i] = static_cast<unsigned char>((value >> (i * 8)) & 0xff);
+}
+
+__attribute__((naked)) void __lyr_sigreturn_trampoline(void) {
+	asm volatile("mov %[nr], %%rax\n\t"
+	             "syscall\n\t"
+	             "hlt\n\t"
+	             :
+	             : [nr] "i"(SYS_SIGRETURN)
+	             : "rax", "rcx", "r11", "memory");
+}
 
 uint32_t open_flags_to_lyr(int flags) {
 	uint32_t out = 0;
@@ -691,10 +736,10 @@ int Sysdeps<Ttyname>::operator()(int fd, char *buffer, size_t size) {
 	constexpr size_t prefix_len = sizeof(prefix) - 1;
 
 	if (!buffer)
-		return -EFAULT;
+		return EFAULT;
 
 	if (size < prefix_len + TTY_NAME_MAX + 1)
-		return -ENAMETOOLONG;
+		return ENAMETOOLONG;
 
 	memcpy(buffer, prefix, prefix_len);
 
@@ -718,6 +763,60 @@ int Sysdeps<Kill>::operator()(pid_t pid, int signal) {
 	auto sc = syscall(SYS_KILL, pid, signal);
 	if (int e = sc_error(sc); e)
 		return e;
+	return 0;
+}
+
+int Sysdeps<Sigprocmask>::operator()(
+    int how, const sigset_t *__restrict set, sigset_t *__restrict retrieve
+) {
+	uint64_t raw_set = sigset_to_u64(set);
+	uint64_t raw_old = 0;
+
+	auto sc =
+	    syscall(SYS_SIGPROCMASK, how, set ? &raw_set : nullptr, retrieve ? &raw_old : nullptr);
+
+	if (int e = sc_error(sc); e)
+		return e;
+
+	if (retrieve)
+		u64_to_sigset(raw_old, retrieve);
+
+	return 0;
+}
+
+int Sysdeps<Sigaction>::operator()(
+    int sig, const struct sigaction *__restrict act, struct sigaction *__restrict oldact
+) {
+	lyr_sigaction kact;
+	lyr_sigaction kold;
+
+	lyr_sigaction *kactp = nullptr;
+	lyr_sigaction *koldp = oldact ? &kold : nullptr;
+
+	if (act) {
+		memset(&kact, 0, sizeof(kact));
+
+		kact.handler = reinterpret_cast<uint64_t>(act->sa_handler);
+		kact.flags = static_cast<uint64_t>(act->sa_flags);
+		kact.restorer = reinterpret_cast<uint64_t>(&__lyr_sigreturn_trampoline);
+		kact.mask = sigset_to_u64(&act->sa_mask);
+
+		kactp = &kact;
+	}
+
+	auto sc = syscall(SYS_SIGACTION, sig, kactp, koldp);
+
+	if (int e = sc_error(sc); e)
+		return e;
+
+	if (oldact) {
+		memset(oldact, 0, sizeof(*oldact));
+
+		oldact->sa_handler = reinterpret_cast<void (*)(int)>(kold.handler);
+		oldact->sa_flags = static_cast<int>(kold.flags);
+		u64_to_sigset(kold.mask, &oldact->sa_mask);
+	}
+
 	return 0;
 }
 
