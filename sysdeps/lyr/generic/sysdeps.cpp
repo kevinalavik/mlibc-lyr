@@ -10,9 +10,11 @@
 #include <signal.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
+#include <sys/utsname.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -274,21 +276,33 @@ int Sysdeps<Stat>::operator()(
 	(void)flags;
 
 	switch (fsfdt) {
-		case fsfd_target::path:
-			break;
-		case fsfd_target::fd_path:
+		case fsfd_target::path: {
+			auto sc = syscall(SYS_STAT, path, statbuf);
+			if (int e = sc_error(sc); e)
+				return e;
+			return 0;
+		}
+
+		case fsfd_target::fd_path: {
 			if (fd != AT_FDCWD)
 				return ENOSYS;
-			break;
-		case fsfd_target::fd:
+
+			auto sc = syscall(SYS_STAT, path, statbuf);
+			if (int e = sc_error(sc); e)
+				return e;
+			return 0;
+		}
+
+		case fsfd_target::fd: {
+			auto sc = syscall(SYS_FSTAT, fd, statbuf);
+			if (int e = sc_error(sc); e)
+				return e;
+			return 0;
+		}
+
 		default:
 			return ENOSYS;
 	}
-
-	auto sc = syscall(SYS_STAT, path, statbuf);
-	if (int e = sc_error(sc); e)
-		return e;
-	return 0;
 }
 
 int Sysdeps<Access>::operator()(const char *path, int mode) {
@@ -430,6 +444,16 @@ int Sysdeps<Tcsetattr>::operator()(int fd, int act, const struct termios *attr) 
 
 	int result;
 	return sysdep<Ioctl>(fd, req, const_cast<struct termios *>(attr), &result);
+}
+
+int Sysdeps<Tcgetwinsize>::operator()(int fd, struct winsize *winsz) {
+	int result;
+	return sysdep<Ioctl>(fd, TIOCGWINSZ, winsz, &result);
+}
+
+int Sysdeps<Tcsetwinsize>::operator()(int fd, const struct winsize *winsz) {
+	int result;
+	return sysdep<Ioctl>(fd, TIOCSWINSZ, const_cast<struct winsize *>(winsz), &result);
 }
 
 int Sysdeps<Chroot>::operator()(const char *path) {
@@ -629,6 +653,20 @@ gid_t Sysdeps<GetEgid>::operator()() {
 	return static_cast<gid_t>(sc_ret);
 }
 
+int Sysdeps<GetResuid>::operator()(uid_t *ruid, uid_t *euid, uid_t *suid) {
+	auto sc = syscall(SYS_GETRESUID, ruid, euid, suid);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<GetResgid>::operator()(gid_t *rgid, gid_t *egid, gid_t *sgid) {
+	auto sc = syscall(SYS_GETRESGID, rgid, egid, sgid);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
 int Sysdeps<SetUid>::operator()(uid_t uid) {
 	auto sc = syscall(SYS_SETUID, uid);
 	if (int e = sc_error(sc); e)
@@ -654,6 +692,14 @@ int Sysdeps<SetEgid>::operator()(gid_t egid) {
 	auto sc = syscall(SYS_SETEGID, egid);
 	if (int e = sc_error(sc); e)
 		return e;
+	return 0;
+}
+
+int Sysdeps<GetGroups>::operator()(size_t size, gid_t *list, int *ret) {
+	auto sc = syscall(SYS_GETGROUPS, size, list);
+	if (int e = sc_error(sc); e)
+		return e;
+	*ret = static_cast<int>(sc);
 	return 0;
 }
 
@@ -814,6 +860,50 @@ int Sysdeps<Uname>::operator()(struct utsname *buf) {
 	if (int e = sc_error(sc); e)
 		return e;
 	return 0;
+}
+
+int Sysdeps<GetHostname>::operator()(char *buffer, size_t bufsize) {
+	struct utsname uts;
+	if (int e = sysdep<Uname>(&uts); e)
+		return e;
+
+	size_t node_len = strlen(uts.nodename);
+	if (node_len >= bufsize)
+		return ENAMETOOLONG;
+
+	memcpy(buffer, uts.nodename, node_len);
+	buffer[node_len] = '\0';
+	return 0;
+}
+
+int Sysdeps<Sysconf>::operator()(int num, long *ret) {
+	switch (num) {
+		case _SC_CHILD_MAX:
+			*ret = 25;
+			return 0;
+		case _SC_CLK_TCK:
+			*ret = 1000000;
+			return 0;
+		case _SC_NPROCESSORS_CONF:
+		case _SC_NPROCESSORS_ONLN:
+			*ret = 1;
+			return 0;
+		case _SC_PHYS_PAGES:
+		case _SC_AVPHYS_PAGES:
+			*ret = 1024;
+			return 0;
+		case _SC_GETGR_R_SIZE_MAX:
+			*ret = 1024;
+			return 0;
+		case _SC_SYMLOOP_MAX:
+			*ret = 8;
+			return 0;
+		case _SC_LINE_MAX:
+			*ret = -1;
+			return 0;
+		default:
+			return EINVAL;
+	}
 }
 
 int Sysdeps<Kill>::operator()(pid_t pid, int signal) {
