@@ -304,6 +304,33 @@ int Sysdeps<Faccessat>::operator()(int dirfd, const char *pathname, int mode, in
 	return sysdep<Access>(pathname, mode);
 }
 
+int Sysdeps<Dup>::operator()(int fd, int flags, int *newfd) {
+	long cmd;
+
+	if (flags & ~(O_CLOEXEC))
+		return EINVAL;
+
+	cmd = (flags & O_CLOEXEC) ? F_DUPFD_CLOEXEC : F_DUPFD;
+
+	auto sc = syscall(SYS_FCNTL, fd, cmd, 0);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	*newfd = static_cast<int>(sc);
+	return 0;
+}
+
+int Sysdeps<Dup2>::operator()(int fd, int flags, int newfd) {
+	if (flags & ~(O_CLOEXEC))
+		return EINVAL;
+
+	auto sc = syscall(SYS_DUP2, fd, newfd, flags);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	return 0;
+}
+
 int Sysdeps<Chmod>::operator()(const char *pathname, mode_t mode) {
 	auto sc = syscall(SYS_CHMOD, pathname, mode);
 	if (int e = sc_error(sc); e)
@@ -727,6 +754,13 @@ int Sysdeps<Sleep>::operator()(time_t *secs, long *nanos) {
 	return 0;
 }
 
+int Sysdeps<Pipe>::operator()(int *fds, int flags) {
+	auto sc = syscall(SYS_PIPE, fds, flags);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
 int Sysdeps<Ttyname>::operator()(int fd, char *buffer, size_t size) {
 #define TTY_IOCTL_NAME 0x4c590001UL
 #define TTY_NAME_MAX 32
@@ -749,6 +783,29 @@ int Sysdeps<Ttyname>::operator()(int fd, char *buffer, size_t size) {
 		return e;
 
 	buffer[size - 1] = '\0';
+	return 0;
+}
+
+int Sysdeps<GetPgid>::operator()(pid_t pid, pid_t *pgid) {
+	auto sc = syscall(SYS_GETPGID, pid);
+	if (int e = sc_error(sc); e)
+		return e;
+	*pgid = static_cast<pid_t>(sc);
+	return 0;
+}
+
+int Sysdeps<SetPgid>::operator()(pid_t pid, pid_t pgid) {
+	auto sc = syscall(SYS_SETPGID, pid, pgid);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<SetSid>::operator()(pid_t *sid) {
+	auto sc = syscall(SYS_SETSID);
+	if (int e = sc_error(sc); e)
+		return e;
+	*sid = static_cast<pid_t>(sc);
 	return 0;
 }
 
@@ -818,6 +875,22 @@ int Sysdeps<Sigaction>::operator()(
 	}
 
 	return 0;
+}
+
+int Sysdeps<Renameat>::operator()(
+    int olddirfd, const char *old_path, int newdirfd, const char *new_path
+) {
+	if (olddirfd != AT_FDCWD || newdirfd != AT_FDCWD)
+		return ENOSYS;
+
+	auto sc = syscall(SYS_RENAMEAT, olddirfd, old_path, newdirfd, new_path);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Rename>::operator()(const char *path, const char *new_path) {
+	return sysdep<Renameat>(AT_FDCWD, path, AT_FDCWD, new_path);
 }
 
 } // namespace mlibc
