@@ -1,6 +1,7 @@
 sysdep_supported_options = {
 	'posix': true,
 	'glibc': true,
+	'bsd': true,
 }
 
 if not no_headers
