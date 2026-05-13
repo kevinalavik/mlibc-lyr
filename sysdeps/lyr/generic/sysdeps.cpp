@@ -143,6 +143,7 @@ void Sysdeps<LibcPanic>::operator()() {
 void Sysdeps<LibcLog>::operator()(const char *msg) {
 	ssize_t unused;
 	sysdep<Write>(1, msg, strlen(msg), &unused);
+	sysdep<Write>(1, "\n", 1, &unused);
 }
 
 int Sysdeps<Isatty>::operator()(int fd) {
@@ -316,6 +317,16 @@ int Sysdeps<Faccessat>::operator()(int dirfd, const char *pathname, int mode, in
 	if (dirfd != AT_FDCWD || flags)
 		return ENOSYS;
 	return sysdep<Access>(pathname, mode);
+}
+
+int Sysdeps<Readlink>::operator()(
+    const char *path, void *buffer, size_t max_size, ssize_t *length
+) {
+	auto sc = syscall(SYS_READLINK, path, buffer, max_size);
+	if (int e = sc_error(sc); e)
+		return e;
+	*length = sc;
+	return 0;
 }
 
 int Sysdeps<Dup>::operator()(int fd, int flags, int *newfd) {
@@ -981,6 +992,20 @@ int Sysdeps<Renameat>::operator()(
 
 int Sysdeps<Rename>::operator()(const char *path, const char *new_path) {
 	return sysdep<Renameat>(AT_FDCWD, path, AT_FDCWD, new_path);
+}
+
+int Sysdeps<Fsync>::operator()(int fd) {
+	auto sc = syscall(SYS_FSYNC, fd);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
+}
+
+int Sysdeps<Fadvise>::operator()(int fd, off_t offset, off_t length, int advice) {
+	auto sc = syscall(SYS_FADVICE, fd, offset, length, advice);
+	if (int e = sc_error(sc); e)
+		return e;
+	return 0;
 }
 
 } // namespace mlibc

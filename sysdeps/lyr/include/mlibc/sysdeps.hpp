@@ -90,7 +90,10 @@ struct LyrSysdepsTags : LibcPanic,
                         Sigprocmask,
                         Sigaction,
                         Renameat,
-                        Rename {};
+                        Rename,
+                        Readlink,
+                        Fsync,
+                        Fadvise {};
 
 template <typename Tag> using Sysdeps = SysdepOf<LyrSysdepsTags, Tag>;
 

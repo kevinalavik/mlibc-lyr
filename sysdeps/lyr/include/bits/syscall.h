@@ -74,6 +74,9 @@ enum {
 	SYS_GETRESGID,
 	SYS_GETGROUPS,
 	SYS_FSTAT,
+	SYS_READLINK,
+	SYS_FSYNC,
+	SYS_FADVICE
 };
 
 #ifdef __cplusplus
