@@ -102,34 +102,6 @@ __attribute__((naked)) void __lyr_sigreturn_trampoline(void) {
 	             : "rax", "rcx", "r11", "memory");
 }
 
-uint32_t open_flags_to_lyr(int flags) {
-	uint32_t out = 0;
-
-	switch (flags & O_ACCMODE) {
-		case O_WRONLY:
-			out |= 0x0001u;
-			break;
-		case O_RDWR:
-			out |= 0x0002u;
-			break;
-		default:
-			break;
-	}
-
-	if (flags & O_CREAT)
-		out |= 0x0100u;
-	if (flags & O_EXCL)
-		out |= 0x0200u;
-	if (flags & O_TRUNC)
-		out |= 0x0400u;
-	if (flags & O_APPEND)
-		out |= 0x0800u;
-	if (flags & O_DIRECTORY)
-		out |= 0x1000u;
-
-	return out;
-}
-
 } // namespace
 
 namespace mlibc {
@@ -218,12 +190,21 @@ int Sysdeps<Read>::operator()(int fd, void *buf, unsigned long size, long *bytes
 	return 0;
 }
 
-int Sysdeps<Open>::operator()(const char *path, int flags, unsigned int mode, int *fd) {
-	auto sc = syscall(SYS_OPEN, path, open_flags_to_lyr(flags), mode);
+int Sysdeps<Openat>::operator()(int dirfd, const char *path, int flags, mode_t mode, int *fd) {
+	auto sc = syscall(SYS_OPENAT, dirfd, path, flags, mode);
 	if (int e = sc_error(sc); e)
 		return e;
-	*fd = sc;
+
+	*fd = static_cast<int>(sc);
 	return 0;
+}
+
+int Sysdeps<Open>::operator()(const char *pathname, int flags, mode_t mode, int *fd) {
+	return sysdep<Openat>(AT_FDCWD, pathname, flags, mode, fd);
+}
+
+int Sysdeps<OpenDir>::operator()(const char *path, int *handle) {
+	return sysdep<Open>(path, O_RDONLY | O_DIRECTORY, 0, handle);
 }
 
 int Sysdeps<VmMap>::operator()(
@@ -257,17 +238,13 @@ int Sysdeps<ClockGet>::operator()(int clock, time_t *secs, long *nanos) {
 	return 0;
 }
 
-int Sysdeps<OpenDir>::operator()(const char *path, int *handle) {
-	return sysdep<Open>(path, O_RDONLY | O_DIRECTORY, 0, handle);
-}
-
 int Sysdeps<ReadEntries>::operator()(
     int handle, void *buffer, size_t max_size, size_t *bytes_read
 ) {
 	auto sc = syscall(SYS_GETDENTS, handle, buffer, max_size);
 	if (int e = sc_error(sc); e)
 		return e;
-	*bytes_read = sc;
+	*bytes_read = static_cast<size_t>(sc);
 	return 0;
 }
 
@@ -307,16 +284,15 @@ int Sysdeps<Stat>::operator()(
 }
 
 int Sysdeps<Access>::operator()(const char *path, int mode) {
-	auto sc = syscall(SYS_ACCESS, path, mode);
-	if (int e = sc_error(sc); e)
-		return e;
-	return 0;
+	return sysdep<Faccessat>(AT_FDCWD, path, mode, 0);
 }
 
 int Sysdeps<Faccessat>::operator()(int dirfd, const char *pathname, int mode, int flags) {
-	if (dirfd != AT_FDCWD || flags)
-		return ENOSYS;
-	return sysdep<Access>(pathname, mode);
+	auto sc = syscall(SYS_FACCESSAT, dirfd, pathname, mode, flags);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	return 0;
 }
 
 int Sysdeps<Readlink>::operator()(
@@ -357,16 +333,15 @@ int Sysdeps<Dup2>::operator()(int fd, int flags, int newfd) {
 }
 
 int Sysdeps<Chmod>::operator()(const char *pathname, mode_t mode) {
-	auto sc = syscall(SYS_CHMOD, pathname, mode);
-	if (int e = sc_error(sc); e)
-		return e;
-	return 0;
+	return sysdep<Fchmodat>(AT_FDCWD, pathname, mode, 0);
 }
 
-int Sysdeps<Fchmodat>::operator()(int fd, const char *pathname, mode_t mode, int flags) {
-	if (fd != AT_FDCWD || flags)
-		return ENOSYS;
-	return sysdep<Chmod>(pathname, mode);
+int Sysdeps<Fchmodat>::operator()(int dirfd, const char *pathname, mode_t mode, int flags) {
+	auto sc = syscall(SYS_FCHMODAT, dirfd, pathname, mode, flags);
+	if (int e = sc_error(sc); e)
+		return e;
+
+	return 0;
 }
 
 int Sysdeps<Fchmod>::operator()(int fd, mode_t mode) {
@@ -378,48 +353,34 @@ int Sysdeps<Fchmod>::operator()(int fd, mode_t mode) {
 int Sysdeps<Fchownat>::operator()(
     int dirfd, const char *pathname, uid_t owner, gid_t group, int flags
 ) {
-	if (dirfd != AT_FDCWD || flags)
-		return ENOSYS;
-
-	auto sc = syscall(SYS_CHOWN, pathname, owner, group);
+	auto sc = syscall(SYS_FCHOWNAT, dirfd, pathname, owner, group, flags);
 	if (int e = sc_error(sc); e)
 		return e;
+
 	return 0;
 }
 
 int Sysdeps<Mkdir>::operator()(const char *path, mode_t mode) {
-	auto sc = syscall(SYS_MKDIR, path, mode);
-	if (int e = sc_error(sc); e)
-		return e;
-	return 0;
+	return sysdep<Mkdirat>(AT_FDCWD, path, mode);
 }
 
 int Sysdeps<Mkdirat>::operator()(int dirfd, const char *path, mode_t mode) {
-	if (dirfd != AT_FDCWD)
-		return ENOSYS;
-	return sysdep<Mkdir>(path, mode);
-}
-
-int Sysdeps<Rmdir>::operator()(const char *path) {
-	auto sc = syscall(SYS_RMDIR, path);
+	auto sc = syscall(SYS_MKDIRAT, dirfd, path, mode);
 	if (int e = sc_error(sc); e)
 		return e;
+
 	return 0;
 }
 
-int Sysdeps<Unlinkat>::operator()(int fd, const char *path, int flags) {
-	if (fd != AT_FDCWD)
-		return ENOSYS;
+int Sysdeps<Rmdir>::operator()(const char *path) {
+	return sysdep<Unlinkat>(AT_FDCWD, path, AT_REMOVEDIR);
+}
 
-	if (flags & AT_REMOVEDIR)
-		return sysdep<Rmdir>(path);
-
-	if (flags)
-		return ENOSYS;
-
-	auto sc = syscall(SYS_UNLINK, path);
+int Sysdeps<Unlinkat>::operator()(int dirfd, const char *path, int flags) {
+	auto sc = syscall(SYS_UNLINKAT, dirfd, path, flags);
 	if (int e = sc_error(sc); e)
 		return e;
+
 	return 0;
 }
 
@@ -427,7 +388,7 @@ int Sysdeps<Ioctl>::operator()(int fd, unsigned long request, void *arg, int *re
 	auto sc = syscall(SYS_IOCTL, fd, request, arg);
 	if (int e = sc_error(sc); e)
 		return e;
-	*result = sc;
+	*result = static_cast<int>(sc);
 	return 0;
 }
 
@@ -522,7 +483,7 @@ int Sysdeps<Socket>::operator()(int family, int type, int protocol, int *fd) {
 	auto sc = syscall(SYS_SOCKET, family, type, protocol);
 	if (int e = sc_error(sc); e)
 		return e;
-	*fd = sc;
+	*fd = static_cast<int>(sc);
 	return 0;
 }
 
@@ -557,7 +518,7 @@ int Sysdeps<Accept>::operator()(
 	if (int e = sc_error(sc); e)
 		return e;
 
-	*newfd = sc;
+	*newfd = static_cast<int>(sc);
 	return 0;
 }
 
@@ -616,7 +577,7 @@ int Sysdeps<Poll>::operator()(struct pollfd *fds, nfds_t nfds, int timeout, int 
 	if (ret < 0)
 		return -ret;
 
-	*num_events = ret;
+	*num_events = static_cast<int>(ret);
 	return 0;
 }
 
@@ -632,35 +593,35 @@ int Sysdeps<Fork>::operator()(pid_t *child) {
 pid_t Sysdeps<GetPid>::operator()() {
 	auto sc_ret = syscall(SYS_GETPID);
 	if (int e = sc_error(sc_ret); e)
-		return (pid_t)-e;
+		return static_cast<pid_t>(-e);
 	return static_cast<pid_t>(sc_ret);
 }
 
 uid_t Sysdeps<GetUid>::operator()() {
 	auto sc_ret = syscall(SYS_GETUID);
 	if (int e = sc_error(sc_ret); e)
-		return (uid_t)-1;
+		return static_cast<uid_t>(-1);
 	return static_cast<uid_t>(sc_ret);
 }
 
 uid_t Sysdeps<GetEuid>::operator()() {
 	auto sc_ret = syscall(SYS_GETEUID);
 	if (int e = sc_error(sc_ret); e)
-		return (uid_t)-1;
+		return static_cast<uid_t>(-1);
 	return static_cast<uid_t>(sc_ret);
 }
 
 gid_t Sysdeps<GetGid>::operator()() {
 	auto sc_ret = syscall(SYS_GETGID);
 	if (int e = sc_error(sc_ret); e)
-		return (gid_t)-1;
+		return static_cast<gid_t>(-1);
 	return static_cast<gid_t>(sc_ret);
 }
 
 gid_t Sysdeps<GetEgid>::operator()() {
 	auto sc_ret = syscall(SYS_GETEGID);
 	if (int e = sc_error(sc_ret); e)
-		return (gid_t)-1;
+		return static_cast<gid_t>(-1);
 	return static_cast<gid_t>(sc_ret);
 }
 
@@ -717,14 +678,14 @@ int Sysdeps<GetGroups>::operator()(size_t size, gid_t *list, int *ret) {
 pid_t Sysdeps<GetTid>::operator()() {
 	auto sc_ret = syscall(SYS_GETTID);
 	if (int e = sc_error(sc_ret); e)
-		return (pid_t)-e;
+		return static_cast<pid_t>(-e);
 	return static_cast<pid_t>(sc_ret);
 }
 
 pid_t Sysdeps<GetPpid>::operator()() {
 	auto sc_ret = syscall(SYS_GETPPID);
 	if (int e = sc_error(sc_ret); e)
-		return (pid_t)-e;
+		return static_cast<pid_t>(-e);
 	return static_cast<pid_t>(sc_ret);
 }
 
@@ -805,7 +766,7 @@ int Sysdeps<Sleep>::operator()(time_t *secs, long *nanos) {
 	if (!secs || !nanos)
 		return EINVAL;
 
-	auto sc = syscall(SYS_NSLEEP, (long)*secs, (long)*nanos);
+	auto sc = syscall(SYS_NSLEEP, static_cast<long>(*secs), static_cast<long>(*nanos));
 	if (int e = sc_error(sc); e)
 		return e;
 	return 0;
@@ -981,12 +942,10 @@ int Sysdeps<Sigaction>::operator()(
 int Sysdeps<Renameat>::operator()(
     int olddirfd, const char *old_path, int newdirfd, const char *new_path
 ) {
-	if (olddirfd != AT_FDCWD || newdirfd != AT_FDCWD)
-		return ENOSYS;
-
 	auto sc = syscall(SYS_RENAMEAT, olddirfd, old_path, newdirfd, new_path);
 	if (int e = sc_error(sc); e)
 		return e;
+
 	return 0;
 }
 
@@ -1006,6 +965,17 @@ int Sysdeps<Fadvise>::operator()(int fd, off_t offset, off_t length, int advice)
 	if (int e = sc_error(sc); e)
 		return e;
 	return 0;
+}
+
+int Sysdeps<GetRlimit>::operator()(int resource, struct rlimit *limit) {
+	switch (resource) {
+		case RLIMIT_NOFILE:
+			limit->rlim_cur = RLIM_INFINITY;
+			limit->rlim_max = RLIM_INFINITY;
+			return 0;
+		default:
+			return EINVAL;
+	}
 }
 
 } // namespace mlibc

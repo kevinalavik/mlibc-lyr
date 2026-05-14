@@ -19,6 +19,7 @@ struct LyrSysdepsTags : LibcPanic,
                         FutexWait,
                         Read,
                         Open,
+                        Openat,
                         OpenDir,
                         ReadEntries,
                         Stat,
@@ -93,7 +94,8 @@ struct LyrSysdepsTags : LibcPanic,
                         Rename,
                         Readlink,
                         Fsync,
-                        Fadvise {};
+                        Fadvise,
+                        GetRlimit {};
 
 template <typename Tag> using Sysdeps = SysdepOf<LyrSysdepsTags, Tag>;
 
