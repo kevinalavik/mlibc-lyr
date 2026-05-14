@@ -16,6 +16,8 @@ int main() {
 	assert(german);
 	locale_t french = newlocale(LC_COLLATE_MASK, "fr_FR.utf8", (locale_t)0);
 	assert(french);
+	locale_t c = newlocale(LC_COLLATE_MASK, "C", (locale_t)0);
+	assert(c);
 
 	TEST(german, "Aal", "Ära", == -115);
 	TEST(german, "Ära", "Bär", == -13);
@@ -32,8 +34,23 @@ int main() {
 	TEST(french, "cote", "côte", == -7);
 	TEST(french, "ete", "été", == -4);
 
+#if !defined(USE_CROSS_LIBC)
+	TEST(c, "Aal", "Ära", == -130);
+	TEST(c, "Ära", "Bär", == 129);
+	TEST(c, "Müller", "Müller", == 0);
+	TEST(c, "abc", "ABC", == 32);
+	TEST(c, "essen", "Essen", == 32);
+	TEST(c, "co-op", "coop", == -66);
+	TEST(c, "co\u200Bop", "co\u200B\u200B\u200Bop", == -115);
+	TEST(c, "\u212B", "\u00c5", == 31);
+	TEST(c, "😁", "🙂", == -1);
+	TEST(c, "😁", "🤕", == -12);
+	TEST(c, "😁", "ß", == 45);
+#endif // !defined(USE_CROSS_LIBC)
+
 	freelocale(german);
 	freelocale(french);
+	freelocale(c);
 
 	return 0;
 }
